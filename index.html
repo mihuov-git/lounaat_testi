@@ -6,7 +6,7 @@
   <title>Tämän päivän lounaat</title>
   <style>
     :root { --bg:#0f172a; --panel:#111827; --text:#f8fafc; --muted:#cbd5e1; --accent:#22c55e; --border:rgba(255,255,255,0.08); --shadow:0 20px 40px rgba(0,0,0,0.25); }
-    * { box-sizing: border-box; }
+    * { box-sizing:border-box; }
     body { margin:0; font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:linear-gradient(180deg,#0b1120 0%,#111827 100%); color:var(--text); min-height:100vh; }
     .container { max-width:1180px; margin:0 auto; padding:32px 20px 56px; }
     .hero { margin-bottom:28px; padding:28px; border:1px solid var(--border); border-radius:24px; background:rgba(17,24,39,0.75); box-shadow:var(--shadow); backdrop-filter:blur(10px); }
@@ -41,7 +41,7 @@
   <div class="container">
     <section class="hero">
       <h1>Tämän päivän lounaat</h1>
-      <p class="subtitle">GitHub Pages -versio. Lounaat haetaan GitHub Actionsilla ajastetusti ja sivu näyttää uusimman onnistuneen haun.</p>
+      <p class="subtitle">GitHub Pages -versio. Grill it! Marinan hinta on lukittu käsin, mutta päivän annokset haetaan automaattisesti. Muut ravintolat haetaan kokonaan automaattisesti.</p>
       <div class="meta">
         <div class="pill" id="today-pill">Päivä: ladataan...</div>
         <div class="pill" id="updated-pill">Päivitetty: -</div>
@@ -68,9 +68,9 @@
     function renderCards(results,todayName){
       const root=document.getElementById("cards"); root.innerHTML="";
       for(const result of results){
-        const card=document.createElement("article"); card.className="card";
         const ok=result.status==="ok"; const statusText=ok?"Haettu automaattisesti":"Lounasta ei löytynyt";
         const items=Array.isArray(result.items)&&result.items.length?`<ul class="menu-list">${result.items.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>`:`<div class="note">Tälle päivälle ei löytynyt lounaslistaa viimeisimmässä haussa.</div>`;
+        const card=document.createElement("article"); card.className="card";
         card.innerHTML=`<div class="card-header"><h2>${escapeHtml(result.name)}</h2><p>${escapeHtml(result.subtitle||"")}</p><div class="status ${ok?"ok":"error"}">${statusText}</div></div><div class="card-body"><div class="price-row"><div><div class="price-label">Lounaan hinta</div><div class="price-value">${escapeHtml(result.price||"-")}</div></div></div>${items}<div class="note"><div><strong>Päivä:</strong> ${escapeHtml(todayName)}</div><div><strong>Lähde:</strong> <a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">avaa alkuperäinen sivu</a></div></div></div>`;
         root.appendChild(card);
       }
@@ -92,7 +92,7 @@
       }
     }
     document.getElementById("refresh-button").addEventListener("click",loadLunches);
-    document.getElementById("toggle-debug").addEventListener("click",()=>{const el=document.getElementById("debug"); el.style.display=el.style.display==="none"?"block":"none";});
+    document.getElementById("toggle-debug").addEventListener("click",()=>{const el=document.getElementById("debug");el.style.display=el.style.display==="none"?"block":"none";});
     loadLunches();
   </script>
 </body>
