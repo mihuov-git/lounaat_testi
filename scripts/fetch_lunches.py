@@ -8,210 +8,183 @@ from zoneinfo import ZoneInfo
 import requests
 from bs4 import BeautifulSoup
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; LunchBot/1.0; +https://github.com/)"
-}
-
-WEEKDAY_NAMES = ["sunnuntai", "maanantai", "tiistai", "keskiviikko", "torstai", "perjantai", "lauantai"]
-DAY_ALIASES = {
-    "maanantai": ["maanantai", "ma"],
-    "tiistai": ["tiistai", "ti"],
-    "keskiviikko": ["keskiviikko", "ke"],
-    "torstai": ["torstai", "to"],
-    "perjantai": ["perjantai", "pe"],
-}
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; LunchBot/1.0; +https://github.com/)"}
+DAY_NAMES = {0: "maanantai", 1: "tiistai", 2: "keskiviikko", 3: "torstai", 4: "perjantai", 5: "lauantai", 6: "sunnuntai"}
+WEEKDAYS = ["maanantai", "tiistai", "keskiviikko", "torstai", "perjantai", "lauantai", "sunnuntai"]
 
 SOURCES = [
-    {
-        "key": "grillit",
-        "name": "Grill it! Marina",
-        "subtitle": "Raflaamo",
-        "url": "https://www.raflaamo.fi/fi/ravintola/turku/grill-it-marina-turku/menu/lounas",
-    },
-    {
-        "key": "viides",
-        "name": "Viides Näyttämö",
-        "subtitle": "Kulttuuriranta",
-        "url": "https://www.viidesnayttamo.fi/?page_id=73",
-    },
-    {
-        "key": "aitiopaikka",
-        "name": "Aitiopaikka",
-        "subtitle": "Fresco Ravintolat",
-        "url": "https://www.frescoravintolat.fi/lounas/aitiopaikan-lounaslista/",
-    },
+    {"key": "grillit", "name": "Grill it! Marina", "subtitle": "Raflaamo", "url": "https://www.raflaamo.fi/fi/ravintola/turku/grill-it-marina-turku/menu/lounas"},
+    {"key": "viides", "name": "Viides Näyttämö", "subtitle": "Kulttuuriranta", "url": "https://www.viidesnayttamo.fi/?page_id=73"},
+    {"key": "aitiopaikka", "name": "Aitiopaikka", "subtitle": "Fresco Ravintolat", "url": "https://www.frescoravintolat.fi/lounas/aitiopaikan-lounaslista/"},
 ]
-
 
 def helsinki_now() -> datetime:
     return datetime.now(ZoneInfo("Europe/Helsinki"))
 
-
 def today_name() -> str:
-    return WEEKDAY_NAMES[helsinki_now().weekday() + 1 if helsinki_now().weekday() < 6 else 0]
-
-
-# Python weekday Monday=0..Sunday=6 -> convert to our list Sunday first
-def today_name() -> str:
-    py = helsinki_now().weekday()
-    mapping = {
-        0: "maanantai",
-        1: "tiistai",
-        2: "keskiviikko",
-        3: "torstai",
-        4: "perjantai",
-        5: "lauantai",
-        6: "sunnuntai",
-    }
-    return mapping[py]
-
+    return DAY_NAMES[helsinki_now().weekday()]
 
 def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
 
-
 def fetch_html(url: str) -> str:
-    r = requests.get(url, headers=HEADERS, timeout=30)
-    r.raise_for_status()
-    return r.text
+    response = requests.get(url, headers=HEADERS, timeout=30)
+    response.raise_for_status()
+    return response.text
 
-
-def text_from_html(html: str) -> str:
+def soup_lines(html: str) -> list[str]:
     soup = BeautifulSoup(html, "html.parser")
-    return normalize("\n".join(soup.stripped_strings))
+    text = soup.get_text("\n")
+    lines = [normalize(line) for line in text.splitlines()]
+    return [line for line in lines if line]
 
-
-def dedupe(items: list[str]) -> list[str]:
-    seen: list[str] = []
+def dedupe_keep_order(items: list[str]) -> list[str]:
+    out = []
+    seen = set()
     for item in items:
-        item = normalize(item)
-        if item and item not in seen:
-            seen.append(item)
-    return seen
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
 
+def is_day_heading(line: str) -> bool:
+    return any(re.match(rf"^{day}\b", line, re.I) for day in WEEKDAYS)
 
-def extract_day_block(text: str, day_name: str) -> str | None:
-    aliases = DAY_ALIASES.get(day_name, [day_name])
-    start_re = re.compile(rf"({'|'.join(map(re.escape, aliases))})(?:\s+\d{{1,2}}\.\d{{1,2}}\.?)?", re.I)
-    m = start_re.search(text)
-    if not m:
-        return None
-    rest = text[m.start():]
-    next_aliases = []
-    for d, vals in DAY_ALIASES.items():
-        if d != day_name:
-            next_aliases.extend(vals)
-    end_re = re.compile(rf"\b({'|'.join(map(re.escape, next_aliases))})\b", re.I)
-    m2 = end_re.search(rest[10:])
-    end = (m2.start() + 10) if m2 else len(rest)
-    return rest[:end].strip()
-
-
-def parse_price(html: str, text: str) -> str:
-    patterns = [
-        r"(\d{1,2},\d{2}\s*€)",
-        r"(\d{1,2}\.\d{2}\s*€)",
-        r"(\d{1,2}\s*€)",
-    ]
-    lowered = text.lower()
-    for keyword in ["hinta", "lounas", "asiakasomistajahinta"]:
-        idx = lowered.find(keyword)
-        if idx != -1:
-            snippet = text[idx:idx + 220]
-            for pat in patterns:
-                m = re.search(pat, snippet, re.I)
-                if m:
-                    return m.group(1).replace(".", ",")
-    for pat in patterns:
-        m = re.search(pat, text, re.I)
-        if m:
-            return m.group(1).replace(".", ",")
-    return "-"
-
-
-def parse_generic_day_lines(text: str, day_name: str) -> list[str]:
-    block = extract_day_block(text, day_name)
-    if not block:
+def collect_day_block(lines: list[str], day_name: str) -> list[str]:
+    start = None
+    for i, line in enumerate(lines):
+        if re.match(rf"^{day_name}\b", line, re.I):
+            start = i
+            break
+    if start is None:
         return []
-    lines = [normalize(x) for x in re.split(r"[\n\r]+", block)]
-    if len(lines) <= 1:
-        # fallback if HTML collapsed into one line
-        parts = re.split(r"(?<=\.)\s+|(?<=,)\s+(?=[A-ZÅÄÖ])", block)
-        lines = [normalize(x) for x in parts]
-    filtered = []
+    block = []
+    for line in lines[start + 1:]:
+        if is_day_heading(line):
+            break
+        block.append(line)
+    return block
+
+def euro_amount(text: str) -> str | None:
+    m = re.search(r"(\d{1,2}(?:,\d{2})?)\s*€", text)
+    return f"{m.group(1)} €" if m else None
+
+def parse_grillit(html: str, day_name: str):
+    lines = soup_lines(html)
+    block = collect_day_block(lines, day_name)
+    items = []
+    lunch_menu_parts = []
+    in_lunch_menu = False
+    price = "-"
+    for line in block:
+        if re.match(r"^Lounas:\s*", line, re.I):
+            continue
+        if re.match(r"^(G|L|VL|VE|M|GP|VEP)(\s+(G|L|VL|VE|M|GP|VEP))*$", line, re.I):
+            continue
+        if re.match(r"^Asiakasomistajahinta:", line, re.I):
+            continue
+        if re.match(r"^Hinta:\s*", line, re.I):
+            amount = euro_amount(line)
+            if amount and price == "-" and amount not in {"37,90 €", "35,90 €"}:
+                price = amount
+            continue
+        if line == "Lounasmenu":
+            in_lunch_menu = True
+            continue
+        if line in {"Ruokalistamme", "Tervetuloa lounaalle!"}:
+            continue
+        if in_lunch_menu:
+            if "***" in line:
+                lunch_menu_parts.extend([normalize(x) for x in line.split("***") if normalize(x)])
+                in_lunch_menu = False
+            elif not line.startswith("Hinta"):
+                lunch_menu_parts.append(line)
+                in_lunch_menu = False
+            continue
+        if line.startswith("Lisäkkeenä tarjoilemme:"):
+            items.append(line.replace("Lisäkkeenä tarjoilemme:", "Lisäkkeet:").strip())
+        else:
+            items.append(line)
+    if lunch_menu_parts:
+        items.append("Lounasmenu: " + " + ".join(lunch_menu_parts))
+    cleaned = []
+    for item in items:
+        if item.startswith("Lounaan hintaan sisältyy") or item.startswith("Buffetpöydästä löydät") or "VL =" in item:
+            continue
+        cleaned.append(item)
+    return dedupe_keep_order(cleaned)[:8], price
+
+def parse_viides(html: str, day_name: str):
+    lines = soup_lines(html)
+    block = collect_day_block(lines, day_name)
+    items = []
+    for line in block:
+        if line.startswith("L=") or line.startswith("Kysy henkilökunnalta") or line.startswith("Kaikki käyttämämme"):
+            continue
+        items.append(line)
+    price = "-"
     for line in lines:
-        if not line:
+        if re.match(r"^Buffetlounas\b", line, re.I):
+            amount = euro_amount(line)
+            if amount:
+                price = amount
+                break
+    return dedupe_keep_order(items)[:5], price
+
+def parse_aitiopaikka(html: str, day_name: str):
+    lines = soup_lines(html)
+    block = collect_day_block(lines, day_name)
+    items = []
+    for line in block:
+        if line.startswith("L =") or line.startswith("Lihojen ja broilerin"):
             continue
-        if re.fullmatch(r"(maanantai|tiistai|keskiviikko|torstai|perjantai)(\s+\d{1,2}\.\d{1,2}\.?)?", line, re.I):
+        if line.upper() == "PITKÄPERJANTAI":
+            items.append("Ravintola suljettu")
             continue
-        if re.match(r"^(lounaslista|lounasaika)\b", line, re.I):
+        if line == "Ravintola suljettu!":
             continue
-        filtered.append(line)
-    return dedupe(filtered)
+        items.append(line)
+    price = "-"
+    for line in lines:
+        if re.match(r"^Lämminruokalounas\b", line, re.I):
+            amount = euro_amount(line)
+            if amount:
+                price = amount
+                break
+    return dedupe_keep_order(items)[:5], price
 
-
-def parse_grillit(html: str, day_name: str) -> tuple[list[str], str]:
-    text = text_from_html(html)
-    items = parse_generic_day_lines(text, day_name)
-    items = [
-        x for x in items
-        if not re.match(r"^(Hinta:|Asiakasomistajahinta:)\b", x, re.I)
-        and not re.fullmatch(r"(G|L|VL|VE|M|GP|VEP)(\s+(G|L|VL|VE|M|GP|VEP))*", x, re.I)
-    ]
-    return items[:10], parse_price(html, text)
-
-
-def parse_viides(html: str, day_name: str) -> tuple[list[str], str]:
-    text = text_from_html(html)
-    items = parse_generic_day_lines(text, day_name)
-    return items[:8], parse_price(html, text)
-
-
-def parse_aitiopaikka(html: str, day_name: str) -> tuple[list[str], str]:
-    text = text_from_html(html)
-    items = parse_generic_day_lines(text, day_name)
-    return items[:8], parse_price(html, text)
-
-
-PARSERS = {
-    "grillit": parse_grillit,
-    "viides": parse_viides,
-    "aitiopaikka": parse_aitiopaikka,
-}
-
+PARSERS = {"grillit": parse_grillit, "viides": parse_viides, "aitiopaikka": parse_aitiopaikka}
 
 def main() -> None:
     day = today_name()
     debug = []
     restaurants = []
-
     for source in SOURCES:
-        try:
-            html = fetch_html(source["url"])
-            items, price = PARSERS[source["key"]](html, day)
-            status = "ok" if items else "error"
-            restaurants.append({
-                "key": source["key"],
-                "name": source["name"],
-                "subtitle": source["subtitle"],
-                "url": source["url"],
-                "price": price or "-",
-                "items": items,
-                "status": status,
-            })
-            debug.append(f'{source["name"]}: {status}, {len(items)} riviä, hinta {price}')
-        except Exception as e:
-            restaurants.append({
-                "key": source["key"],
-                "name": source["name"],
-                "subtitle": source["subtitle"],
-                "url": source["url"],
-                "price": "-",
-                "items": [],
-                "status": "error",
-            })
-            debug.append(f'{source["name"]}: virhe {type(e).__name__}: {e}')
-
+      try:
+        html = fetch_html(source["url"])
+        items, price = PARSERS[source["key"]](html, day)
+        status = "ok" if items else "error"
+        restaurants.append({
+            "key": source["key"],
+            "name": source["name"],
+            "subtitle": source["subtitle"],
+            "url": source["url"],
+            "price": price or "-",
+            "items": items,
+            "status": status,
+        })
+        debug.append(f'{source["name"]}: {status}, {len(items)} riviä, hinta {price}')
+      except Exception as exc:
+        restaurants.append({
+            "key": source["key"],
+            "name": source["name"],
+            "subtitle": source["subtitle"],
+            "url": source["url"],
+            "price": "-",
+            "items": [],
+            "status": "error",
+        })
+        debug.append(f'{source["name"]}: virhe {type(exc).__name__}: {exc}')
     now = helsinki_now()
     payload = {
         "updated_at": now.isoformat(),
@@ -220,11 +193,8 @@ def main() -> None:
         "debug": debug,
         "restaurants": restaurants,
     }
-
-    out = "data/lunches.json"
-    with open(out, "w", encoding="utf-8") as f:
+    with open("data/lunches.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
-
 
 if __name__ == "__main__":
     main()
