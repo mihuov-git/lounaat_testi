@@ -24,11 +24,16 @@
     }
     .container { max-width: 1180px; margin: 0 auto; padding: 32px 20px 56px; }
     .hero {
-      margin-bottom: 28px; padding: 28px; border: 1px solid var(--border); border-radius: 24px;
-      background: rgba(17, 24, 39, 0.75); box-shadow: var(--shadow); backdrop-filter: blur(10px);
+      margin-bottom: 28px;
+      padding: 28px;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: rgba(17, 24, 39, 0.75);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
     }
     h1 { margin: 0 0 10px; font-size: clamp(2rem, 4vw, 3rem); line-height: 1.05; }
-    .subtitle { margin: 0; color: var(--muted); font-size: 1.05rem; max-width: 70ch; }
+    .subtitle { margin: 0; color: var(--muted); font-size: 1.05rem; max-width: 72ch; }
     .meta { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 12px; }
     .pill {
       display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 999px;
@@ -56,7 +61,6 @@
       border-radius: 999px; font-size: 0.88rem; border: 1px solid var(--border); background: rgba(255,255,255,0.04);
     }
     .status.ok { color: #bbf7d0; }
-    .status.warn { color: #fde68a; }
     .status.error { color: #fecaca; }
     .card-body { padding: 18px 20px 22px; }
     .price-row {
@@ -81,8 +85,7 @@
     <section class="hero">
       <h1>Tämän päivän lounaat</h1>
       <p class="subtitle">
-        Tämä versio on tarkoitettu GitHub Pagesiin. Lounaat haetaan GitHub Actionsilla ajastetusti ja sivu näyttää aina
-        uusimman onnistuneesti haetun datan.
+        GitHub Pages -versio. Lounaat haetaan GitHub Actionsilla ajastetusti ja sivu näyttää uusimman onnistuneen haun.
       </p>
       <div class="meta">
         <div class="pill" id="today-pill">Päivä: ladataan...</div>
@@ -109,18 +112,14 @@
     const weekdayNames = ["sunnuntai", "maanantai", "tiistai", "keskiviikko", "torstai", "perjantai", "lauantai"];
     function getTodayLabel() {
       const helsinki = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Helsinki" }));
-      return helsinki.toLocaleDateString("fi-FI", {
-        weekday: "long", day: "numeric", month: "numeric", year: "numeric"
-      });
+      return helsinki.toLocaleDateString("fi-FI", { weekday: "long", day: "numeric", month: "numeric", year: "numeric" });
     }
     function getTodayWeekdayName() {
       const helsinki = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Helsinki" }));
       return weekdayNames[helsinki.getDay()];
     }
     function escapeHtml(text) {
-      return String(text ?? "")
-        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+      return String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
     function renderCards(results, todayName) {
       const root = document.getElementById("cards");
@@ -128,8 +127,8 @@
       for (const result of results) {
         const card = document.createElement("article");
         card.className = "card";
-        const statusClass = result.status === "ok" ? "ok" : result.status === "partial" ? "warn" : "error";
-        const statusText = result.status === "ok" ? "Haettu automaattisesti" : result.status === "partial" ? "Osittainen tulos" : "Lounasta ei löytynyt";
+        const statusClass = result.status === "ok" ? "ok" : "error";
+        const statusText = result.status === "ok" ? "Haettu automaattisesti" : "Lounasta ei löytynyt";
         const items = Array.isArray(result.items) && result.items.length
           ? `<ul class="menu-list">${result.items.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
           : `<div class="note">Tälle päivälle ei löytynyt lounaslistaa viimeisimmässä haussa.</div>`;
@@ -163,8 +162,7 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         renderCards(data.restaurants || [], data.today_name || getTodayWeekdayName());
-        const updated = data.updated_at_fi || data.updated_at || "-";
-        document.getElementById("updated-pill").textContent = `Päivitetty: ${updated}`;
+        document.getElementById("updated-pill").textContent = `Päivitetty: ${data.updated_at_fi || data.updated_at || "-"}`;
         document.getElementById("debug").textContent = (data.debug || []).join(" | ") || "Ei debug-tietoa.";
       } catch (error) {
         renderCards([], getTodayWeekdayName());
