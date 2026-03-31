@@ -1,0 +1,37 @@
+{
+  "updated_at": "",
+  "updated_at_fi": "Ei vielä haettu",
+  "today_name": "maanantai",
+  "debug": [
+    "GitHub Action ei ole vielä ajettu."
+  ],
+  "restaurants": [
+    {
+      "key": "grillit",
+      "name": "Grill it! Marina",
+      "subtitle": "Raflaamo",
+      "url": "https://www.raflaamo.fi/fi/ravintola/turku/grill-it-marina-turku/menu/lounas",
+      "price": "-",
+      "items": [],
+      "status": "error"
+    },
+    {
+      "key": "viides",
+      "name": "Viides Näyttämö",
+      "subtitle": "Kulttuuriranta",
+      "url": "https://www.viidesnayttamo.fi/?page_id=73",
+      "price": "-",
+      "items": [],
+      "status": "error"
+    },
+    {
+      "key": "aitiopaikka",
+      "name": "Aitiopaikka",
+      "subtitle": "Fresco Ravintolat",
+      "url": "https://www.frescoravintolat.fi/lounas/aitiopaikan-lounaslista/",
+      "price": "-",
+      "items": [],
+      "status": "error"
+    }
+  ]
+}
