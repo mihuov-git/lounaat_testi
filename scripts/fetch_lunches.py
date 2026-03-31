@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
+import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -10,7 +13,8 @@ from bs4 import BeautifulSoup
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; LunchBot/1.0; +https://github.com/)"}
 DAY_NAMES = {0: "maanantai", 1: "tiistai", 2: "keskiviikko", 3: "torstai", 4: "perjantai", 5: "lauantai", 6: "sunnuntai"}
-DAY_EN = {"maanantai":"Monday","tiistai":"Tuesday","keskiviikko":"Wednesday","torstai":"Thursday","perjantai":"Friday","lauantai":"Saturday","sunnuntai":"Sunday"}
+DAY_EN = {"maanantai":"Tuesday?","tiistai":"Tuesday","keskiviikko":"Wednesday","torstai":"Thursday","perjantai":"Friday","lauantai":"Saturday","sunnuntai":"Sunday"}
+DAY_EN["maanantai"]="Monday"
 WEEKDAY_CAP = {"maanantai":"Maanantai","tiistai":"Tiistai","keskiviikko":"Keskiviikko","torstai":"Torstai","perjantai":"Perjantai","lauantai":"Lauantai","sunnuntai":"Sunnuntai"}
 
 SOURCES = [
@@ -47,12 +51,35 @@ def dedupe_keep_order(items: list[str]) -> list[str]:
             out.append(item)
     return out
 
-def parse_grillit_english(html: str, day_name: str) -> tuple[list[str], str]:
-    lines = lines_from_html(html)
+def parse_grillit_playwright(day_name: str) -> tuple[list[str], str]:
     day = DAY_EN[day_name]
+    script = f"""
+const {{ chromium }} = require('playwright');
+(async() => {{
+  const browser = await chromium.launch({{ headless: true }});
+  const page = await browser.newPage();
+  await page.goto('https://www.raflaamo.fi/en/restaurant/turku/grill-it-marina-turku/menu/lunch', {{ waitUntil: 'networkidle', timeout: 60000 }});
+  await page.waitForTimeout(3000);
+  const text = await page.locator('body').innerText();
+  console.log(text);
+  await browser.close();
+}})();
+"""
+    result = subprocess.run(
+        ["node", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=90,
+        env={**os.environ},
+    )
+    text = result.stdout
+    # Parse visible rendered text
+    lines = [normalize(x) for x in text.splitlines() if normalize(x)]
+
     start = None
     for i, line in enumerate(lines):
-        if line.startswith(f"{day} ") and re.search(r"\d{1,2}/\d{1,2}", line):
+        if line.startswith(f"{day} ") and (re.search(r"\d{{1,2}}/\d{{1,2}}", line) or re.search(r"\d{{1,2}}\.\d{{1,2}}", line)):
             start = i
             break
     if start is None:
@@ -64,27 +91,30 @@ def parse_grillit_english(html: str, day_name: str) -> tuple[list[str], str]:
         return [], "14,80 €"
 
     items = []
+    weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     for line in lines[start + 1:]:
-        if any(line.startswith(f"{d} ") for d in ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] if d != day):
+        if any(line.startswith(w + " ") for w in weekdays if w != day):
             break
-        if line.startswith("Lunch:"):
+        if line in {"Lunch", "Lunch menu", "L", "G", "M", "VE", "VL", "VN", "VEP", "GP"}:
             continue
-        if re.fullmatch(r"\d{1,2},\d{2} €", line):
+        if re.fullmatch(r"\d{1,2},\d{2}\s*€", line):
             continue
-        if re.fullmatch(r"\d{1,2}\.\d{1,2}\.?", line):
+        if line.startswith("Price:") or line.startswith("Owner customer price:"):
             continue
-        if line in {"G", "L", "M", "VN", "VE", "VL", "GP"}:
-            continue
-        if line == "Lunch menu":
+        if line.startswith("Welcome to lunch!") or line.startswith("Lunch includes") or line.startswith("At lunch time") or line.startswith("From the buffet") or line.startswith("Please ask our staff"):
             continue
         if "***" in line:
             parts = [normalize(x) for x in line.split("***") if normalize(x)]
             items.append("Lounasmenu: " + " + ".join(parts))
             continue
-        if line.startswith("Welcome to lunch!") or line.startswith("Lunch is served") or line.startswith("The lunch includes") or line.startswith("From the buffet table") or line.startswith("At lunch time"):
-            continue
         items.append(line)
-    return dedupe_keep_order(items)[:6], "14,80 €"
+
+    cleaned = []
+    for item in dedupe_keep_order(items):
+        if item == day or re.fullmatch(r"\d{1,2}[./]\d{1,2}[./]?", item):
+            continue
+        cleaned.append(item)
+    return cleaned[:6], "14,80 €"
 
 def parse_viides(html: str, day_name: str) -> tuple[list[str], str]:
     text = "\n".join(lines_from_html(html))
@@ -113,16 +143,21 @@ def parse_aitiopaikka(html: str, day_name: str) -> tuple[list[str], str]:
     items = [x for x in items if not re.fullmatch(r"\d{1,2}\.\d{1,2}\.?", x)]
     return dedupe_keep_order(items)[:4], price
 
-PARSERS = {"grillit": parse_grillit_english, "viides": parse_viides, "aitiopaikka": parse_aitiopaikka}
-
 def main() -> None:
     day = today_name()
     debug = []
     restaurants = []
+
     for source in SOURCES:
         try:
-            html = fetch_html(source.get("fetch_url", source["url"]))
-            items, price = PARSERS[source["key"]](html, day)
+            if source["key"] == "grillit":
+                items, price = parse_grillit_playwright(day)
+            else:
+                html = fetch_html(source["url"])
+                if source["key"] == "viides":
+                    items, price = parse_viides(html, day)
+                else:
+                    items, price = parse_aitiopaikka(html, day)
             status = "ok" if items else "error"
             restaurants.append({
                 "key": source["key"],
@@ -140,11 +175,12 @@ def main() -> None:
                 "name": source["name"],
                 "subtitle": source["subtitle"],
                 "url": source["url"],
-                "price": "14,80 €" if source["key"]=="grillit" else "-",
+                "price": "14,80 €" if source["key"] == "grillit" else "-",
                 "items": [],
                 "status": "error",
             })
             debug.append(f'{source["name"]}: virhe {type(exc).__name__}: {exc}')
+
     now = helsinki_now()
     payload = {
         "updated_at": now.isoformat(),
