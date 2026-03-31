@@ -10,20 +10,13 @@ from bs4 import BeautifulSoup
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; LunchBot/1.0; +https://github.com/)"}
 DAY_NAMES = {0: "maanantai", 1: "tiistai", 2: "keskiviikko", 3: "torstai", 4: "perjantai", 5: "lauantai", 6: "sunnuntai"}
-WEEKDAY_CAP = {
-    "maanantai": "Maanantai",
-    "tiistai": "Tiistai",
-    "keskiviikko": "Keskiviikko",
-    "torstai": "Torstai",
-    "perjantai": "Perjantai",
-    "lauantai": "Lauantai",
-    "sunnuntai": "Sunnuntai",
-}
+DAY_EN = {"maanantai":"Monday","tiistai":"Tuesday","keskiviikko":"Wednesday","torstai":"Thursday","perjantai":"Friday","lauantai":"Saturday","sunnuntai":"Sunday"}
+WEEKDAY_CAP = {"maanantai":"Maanantai","tiistai":"Tiistai","keskiviikko":"Keskiviikko","torstai":"Torstai","perjantai":"Perjantai","lauantai":"Lauantai","sunnuntai":"Sunnuntai"}
 
 SOURCES = [
-    {"key": "grillit", "name": "Grill it! Marina", "subtitle": "Raflaamo", "url": "https://www.raflaamo.fi/fi/ravintola/turku/grill-it-marina-turku/menu/lounas"},
-    {"key": "viides", "name": "Viides Näyttämö", "subtitle": "Kulttuuriranta", "url": "https://www.viidesnayttamo.fi/?page_id=73"},
-    {"key": "aitiopaikka", "name": "Aitiopaikka", "subtitle": "Fresco Ravintolat", "url": "https://www.frescoravintolat.fi/lounas/aitiopaikan-lounaslista/"},
+    {"key":"grillit","name":"Grill it! Marina","subtitle":"Raflaamo","url":"https://www.raflaamo.fi/fi/ravintola/turku/grill-it-marina-turku/menu/lounas","fetch_url":"https://www.raflaamo.fi/en/restaurant/turku/grill-it-marina-turku/menu/lunch"},
+    {"key":"viides","name":"Viides Näyttämö","subtitle":"Kulttuuriranta","url":"https://www.viidesnayttamo.fi/?page_id=73"},
+    {"key":"aitiopaikka","name":"Aitiopaikka","subtitle":"Fresco Ravintolat","url":"https://www.frescoravintolat.fi/lounas/aitiopaikan-lounaslista/"},
 ]
 
 def helsinki_now() -> datetime:
@@ -54,51 +47,43 @@ def dedupe_keep_order(items: list[str]) -> list[str]:
             out.append(item)
     return out
 
-def parse_grillit(html: str, day_name: str) -> tuple[list[str], str]:
-    # Lock price by design; fetch only daily dishes automatically.
+def parse_grillit_english(html: str, day_name: str) -> tuple[list[str], str]:
     lines = lines_from_html(html)
-    day = WEEKDAY_CAP[day_name]
+    day = DAY_EN[day_name]
     start = None
     for i, line in enumerate(lines):
-        if day in line and re.search(r"\d{1,2}\.\d{1,2}\.", line):
+        if line.startswith(f"{day} ") and re.search(r"\d{1,2}/\d{1,2}", line):
             start = i
             break
+    if start is None:
+        for i, line in enumerate(lines):
+            if line.startswith(f"{day} "):
+                start = i
+                break
     if start is None:
         return [], "14,80 €"
 
     items = []
     for line in lines[start + 1:]:
-        if line.startswith("### ") and day not in line:
+        if any(line.startswith(f"{d} ") for d in ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] if d != day):
             break
-        if any(w in line for w in ["Maanantai", "Tiistai", "Keskiviikko", "Torstai", "Perjantai", "Lauantai", "Sunnuntai"]) and line != day:
-            if re.search(r"\d{1,2}\.\d{1,2}\.", line):
-                break
-        if line.startswith("Lounas:"):
+        if line.startswith("Lunch:"):
             continue
-        if line.startswith("Hinta:"):
-            continue
-        if line.startswith("Asiakasomistajahinta:"):
-            continue
-        if line in {"L", "G", "M", "VE", "VL", "VEP", "GP", "G L", "G VL", "G VE", "L G"}:
+        if re.fullmatch(r"\d{1,2},\d{2} €", line):
             continue
         if re.fullmatch(r"\d{1,2}\.\d{1,2}\.?", line):
             continue
-        if line.startswith("* "):
-            line = line[2:].strip()
-        if line == "Lounasmenu":
+        if line in {"G", "L", "M", "VN", "VE", "VL", "GP"}:
+            continue
+        if line == "Lunch menu":
             continue
         if "***" in line:
             parts = [normalize(x) for x in line.split("***") if normalize(x)]
             items.append("Lounasmenu: " + " + ".join(parts))
             continue
-        if line.startswith("Lisäkkeenä tarjoilemme:"):
-            line = line.replace("Lisäkkeenä tarjoilemme:", "Lisäkkeet:")
-        if line.startswith("Tervetuloa lounaalle!") or line.startswith("Lounaan hintaan sisältyy") or line.startswith("Buffetpöydästä löydät"):
+        if line.startswith("Welcome to lunch!") or line.startswith("Lunch is served") or line.startswith("The lunch includes") or line.startswith("From the buffet table") or line.startswith("At lunch time"):
             continue
-        if line.startswith("VL =") or line.startswith("## yhteystiedot"):
-            break
         items.append(line)
-
     return dedupe_keep_order(items)[:6], "14,80 €"
 
 def parse_viides(html: str, day_name: str) -> tuple[list[str], str]:
@@ -128,7 +113,7 @@ def parse_aitiopaikka(html: str, day_name: str) -> tuple[list[str], str]:
     items = [x for x in items if not re.fullmatch(r"\d{1,2}\.\d{1,2}\.?", x)]
     return dedupe_keep_order(items)[:4], price
 
-PARSERS = {"grillit": parse_grillit, "viides": parse_viides, "aitiopaikka": parse_aitiopaikka}
+PARSERS = {"grillit": parse_grillit_english, "viides": parse_viides, "aitiopaikka": parse_aitiopaikka}
 
 def main() -> None:
     day = today_name()
@@ -136,7 +121,7 @@ def main() -> None:
     restaurants = []
     for source in SOURCES:
         try:
-            html = fetch_html(source["url"])
+            html = fetch_html(source.get("fetch_url", source["url"]))
             items, price = PARSERS[source["key"]](html, day)
             status = "ok" if items else "error"
             restaurants.append({
@@ -155,7 +140,7 @@ def main() -> None:
                 "name": source["name"],
                 "subtitle": source["subtitle"],
                 "url": source["url"],
-                "price": "-",
+                "price": "14,80 €" if source["key"]=="grillit" else "-",
                 "items": [],
                 "status": "error",
             })

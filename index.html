@@ -41,7 +41,7 @@
   <div class="container">
     <section class="hero">
       <h1>Tämän päivän lounaat</h1>
-      <p class="subtitle">GitHub Pages -versio. Grill it! Marinan hinta on lukittu käsin, mutta päivän annokset haetaan automaattisesti. Muut ravintolat haetaan kokonaan automaattisesti.</p>
+      <p class="subtitle">GitHub Pages -versio. Grill it! Marinan hinta on lukittu 14,80 € ja päivän annokset haetaan automaattisesti englanninkieliseltä lounassivulta. Muut ravintolat haetaan kokonaan automaattisesti.</p>
       <div class="meta">
         <div class="pill" id="today-pill">Päivä: ladataan...</div>
         <div class="pill" id="updated-pill">Päivitetty: -</div>
@@ -61,7 +61,7 @@
     </section>
   </div>
   <script>
-    const weekdayNames = ["sunnuntai","maanantai","tiistai","keskiviikko","torstai","perjantai","lauantai"];
+    const weekdayNames=["sunnuntai","maanantai","tiistai","keskiviikko","torstai","perjantai","lauantai"];
     function getTodayLabel(){const d=new Date(new Date().toLocaleString("en-US",{timeZone:"Europe/Helsinki"}));return d.toLocaleDateString("fi-FI",{weekday:"long",day:"numeric",month:"numeric",year:"numeric"});}
     function getTodayWeekdayName(){const d=new Date(new Date().toLocaleString("en-US",{timeZone:"Europe/Helsinki"}));return weekdayNames[d.getDay()];}
     function escapeHtml(text){return String(text??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");}
