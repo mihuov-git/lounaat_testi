@@ -1,20 +1,17 @@
 from __future__ import annotations
 
 import json
-import os
 import re
-import subprocess
-import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; LunchBot/1.0; +https://github.com/)"}
 DAY_NAMES = {0: "maanantai", 1: "tiistai", 2: "keskiviikko", 3: "torstai", 4: "perjantai", 5: "lauantai", 6: "sunnuntai"}
-DAY_EN = {"maanantai":"Tuesday?","tiistai":"Tuesday","keskiviikko":"Wednesday","torstai":"Thursday","perjantai":"Friday","lauantai":"Saturday","sunnuntai":"Sunday"}
-DAY_EN["maanantai"]="Monday"
+DAY_EN = {"maanantai":"Monday","tiistai":"Tuesday","keskiviikko":"Wednesday","torstai":"Thursday","perjantai":"Friday","lauantai":"Saturday","sunnuntai":"Sunday"}
 WEEKDAY_CAP = {"maanantai":"Maanantai","tiistai":"Tiistai","keskiviikko":"Keskiviikko","torstai":"Torstai","perjantai":"Perjantai","lauantai":"Lauantai","sunnuntai":"Sunnuntai"}
 
 SOURCES = [
@@ -53,33 +50,18 @@ def dedupe_keep_order(items: list[str]) -> list[str]:
 
 def parse_grillit_playwright(day_name: str) -> tuple[list[str], str]:
     day = DAY_EN[day_name]
-    script = f"""
-const {{ chromium }} = require('playwright');
-(async() => {{
-  const browser = await chromium.launch({{ headless: true }});
-  const page = await browser.newPage();
-  await page.goto('https://www.raflaamo.fi/en/restaurant/turku/grill-it-marina-turku/menu/lunch', {{ waitUntil: 'networkidle', timeout: 60000 }});
-  await page.waitForTimeout(3000);
-  const text = await page.locator('body').innerText();
-  console.log(text);
-  await browser.close();
-}})();
-"""
-    result = subprocess.run(
-        ["node", "-e", script],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=90,
-        env={**os.environ},
-    )
-    text = result.stdout
-    # Parse visible rendered text
-    lines = [normalize(x) for x in text.splitlines() if normalize(x)]
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("https://www.raflaamo.fi/en/restaurant/turku/grill-it-marina-turku/menu/lunch", wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(5000)
+        text = page.locator("body").inner_text()
+        browser.close()
 
+    lines = [normalize(x) for x in text.splitlines() if normalize(x)]
     start = None
     for i, line in enumerate(lines):
-        if line.startswith(f"{day} ") and (re.search(r"\d{{1,2}}/\d{{1,2}}", line) or re.search(r"\d{{1,2}}\.\d{{1,2}}", line)):
+        if line.startswith(f"{day} ") and (re.search(r"\d{1,2}/\d{1,2}", line) or re.search(r"\d{1,2}\.\d{1,2}", line)):
             start = i
             break
     if start is None:
@@ -90,16 +72,16 @@ const {{ chromium }} = require('playwright');
     if start is None:
         return [], "14,80 €"
 
+    weekdays = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
     items = []
-    weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     for line in lines[start + 1:]:
         if any(line.startswith(w + " ") for w in weekdays if w != day):
             break
-        if line in {"Lunch", "Lunch menu", "L", "G", "M", "VE", "VL", "VN", "VEP", "GP"}:
-            continue
-        if re.fullmatch(r"\d{1,2},\d{2}\s*€", line):
+        if line in {"Lunch","Lunch menu","L","G","M","VE","VL","VN","VEP","GP"}:
             continue
         if line.startswith("Price:") or line.startswith("Owner customer price:"):
+            continue
+        if re.fullmatch(r"\d{1,2},\d{2}\s*€", line):
             continue
         if line.startswith("Welcome to lunch!") or line.startswith("Lunch includes") or line.startswith("At lunch time") or line.startswith("From the buffet") or line.startswith("Please ask our staff"):
             continue
@@ -158,6 +140,7 @@ def main() -> None:
                     items, price = parse_viides(html, day)
                 else:
                     items, price = parse_aitiopaikka(html, day)
+
             status = "ok" if items else "error"
             restaurants.append({
                 "key": source["key"],
@@ -189,6 +172,7 @@ def main() -> None:
         "debug": debug,
         "restaurants": restaurants,
     }
+
     with open("data/lunches.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
