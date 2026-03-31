@@ -15,7 +15,7 @@ DAY_EN = {"maanantai":"Monday","tiistai":"Tuesday","keskiviikko":"Wednesday","to
 WEEKDAY_CAP = {"maanantai":"Maanantai","tiistai":"Tiistai","keskiviikko":"Keskiviikko","torstai":"Torstai","perjantai":"Perjantai","lauantai":"Lauantai","sunnuntai":"Sunnuntai"}
 
 SOURCES = [
-    {"key":"grillit","name":"Grill it! Marina","subtitle":"Raflaamo","url":"https://www.raflaamo.fi/fi/ravintola/turku/grill-it-marina-turku/menu/lounas","fetch_url":"https://www.raflaamo.fi/en/restaurant/turku/grill-it-marina-turku/menu/lunch"},
+    {"key":"grillit","name":"Grill it! Marina","subtitle":"Raflaamo","url":"https://www.raflaamo.fi/fi/ravintola/turku/grill-it-marina-turku/menu/lounas"},
     {"key":"viides","name":"Viides Näyttämö","subtitle":"Kulttuuriranta","url":"https://www.viidesnayttamo.fi/?page_id=73"},
     {"key":"aitiopaikka","name":"Aitiopaikka","subtitle":"Fresco Ravintolat","url":"https://www.frescoravintolat.fi/lounas/aitiopaikan-lounaslista/"},
 ]
@@ -129,7 +129,6 @@ def main() -> None:
     day = today_name()
     debug = []
     restaurants = []
-
     for source in SOURCES:
         try:
             if source["key"] == "grillit":
@@ -140,7 +139,6 @@ def main() -> None:
                     items, price = parse_viides(html, day)
                 else:
                     items, price = parse_aitiopaikka(html, day)
-
             status = "ok" if items else "error"
             restaurants.append({
                 "key": source["key"],
@@ -163,7 +161,6 @@ def main() -> None:
                 "status": "error",
             })
             debug.append(f'{source["name"]}: virhe {type(exc).__name__}: {exc}')
-
     now = helsinki_now()
     payload = {
         "updated_at": now.isoformat(),
@@ -172,7 +169,6 @@ def main() -> None:
         "debug": debug,
         "restaurants": restaurants,
     }
-
     with open("data/lunches.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
